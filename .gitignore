@@ -1,0 +1,28 @@
+# Salida de compilacion
+bin/
+obj/
+publish/
+publish-full/
+*.user
+*.suo
+
+# Configuracion personal: NUNCA se sube (contiene la clave de Steam)
+config.json
+config.json.*
+
+# Perfiles de mods del usuario
+perfiles/
+
+# Informes generados por las herramientas de consola
+selftest.txt
+sortreport.txt
+langreport.txt
+bridge.txt
+configcheck.txt
+health.txt
+error.txt
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store

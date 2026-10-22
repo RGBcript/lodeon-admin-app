@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LodeonAdmin</AssemblyName>
+    <RootNamespace>LodeonAdmin</RootNamespace>
+    <ApplicationIcon>assets\lodeon-v4.ico</ApplicationIcon>
+    <Version>1.4.0</Version>
+    <FileVersion>1.4.0.0</FileVersion>
+    <Product>Lodeon Admin</Product>
+    <Company>Lodeon</Company>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- El ejecutable de archivo unico se extrae a una carpeta temporal; sin esto
+         AppContext.BaseDirectory apunta ahi y el config no se encuentra. -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- config.json NO se copia nunca: es del usuario y no debe sobrescribirse
+       con una plantilla vacia en cada compilacion. -->
+  <ItemGroup>
+    <None Remove="config.json" />
+    <Content Remove="config.json" />
+  </ItemGroup>
+
+</Project>
