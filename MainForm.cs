@@ -915,7 +915,9 @@ public class MainForm : Form
             _cLog.Value = st.Errors == 0 ? "Limpio" : st.Errors.ToString();
             _cLog.Accent = st.Errors == 0 ? Theme.Green : Theme.Red;
             _cIdioma.Value = Short(Rim.ActiveLanguage());
-            _cMods.Hint = $"{Rim.AllMods().Count} instalados";
+            // La lista activa incluye Core y los DLC (ludeon.*), que no tienen carpeta
+            // en Mods; por eso activos (405) e instalados en disco (404) no coinciden.
+            _cMods.Hint = $"{Rim.AllMods().Count} en disco";
 
             _txtLog.Text =
                 $"Versión       {Rim.LocalVersion()}\r\n" +
