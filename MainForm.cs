@@ -1734,6 +1734,10 @@ public class MainForm : Form
     /// <summary>Descarga e instala los items seleccionados en la lista de resultados.</summary>
     private async void DescargarSeleccionado()
     {
+        // async void no propaga excepciones: sin este try, un fallo de red o de
+        // SteamCMD cierra la aplicacion sin avisar.
+        try
+        {
         var ids = new List<string>();
         foreach (ListViewItem it in _lvRes.SelectedItems)
             if (it.Tag is string s && s.Length >= 6) ids.Add(s);
@@ -1767,11 +1771,19 @@ public class MainForm : Form
         detalle.AppendLine($"\n{instalados} de {ok.Count} instalados. Reinicia el juego para verlos.");
         SetOut(detalle.ToString());
         RefreshAll();
+        }
+        catch (Exception ex)
+        {
+            SetOut("La descarga falló: " + ex.Message);
+        }
     }
 
     /// <summary>Busca mods desactualizados comparando fechas con el Workshop.</summary>
     private async void BuscarActualizaciones()
     {
+        // async void: una excepcion aqui cerraria la aplicacion.
+        try
+        {
         SetOut("Consultando fechas del Workshop…");
         var (des, comprobables) = await Task.Run(() =>
         {
@@ -1793,6 +1805,11 @@ public class MainForm : Form
             sb.AppendLine($"{d.Titulo}\n  taller {d.Taller:yyyy-MM-dd} · local {d.Local:yyyy-MM-dd} · {d.Dias} días · {d.Id}");
         if (des.Count > 25) sb.AppendLine($"… y {des.Count - 25} más");
         SetOut(sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            SetOut("No se pudieron comprobar las actualizaciones: " + ex.Message);
+        }
     }
 
     /// <summary>Guardar y cargar perfiles de lista de mods.</summary>

@@ -37,8 +37,11 @@ public static class Workshop
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 };
+                // La descarga va a la carpeta de trabajo de SteamCMD, que es el sitio
+                // donde despues la busca ContentDir. No se usa la carpeta del exe:
+                // SteamCMD instala en "<carpeta de steamcmd>/steamapps/...".
                 psi.ArgumentList.Add("+force_install_dir");
-                psi.ArgumentList.Add(Path.GetDirectoryName(Rim.Cfg.SteamCmd)!);
+                psi.ArgumentList.Add(DirectorioTrabajo);
                 psi.ArgumentList.Add("+login");
                 psi.ArgumentList.Add("anonymous");
                 psi.ArgumentList.Add("+workshop_download_item");
@@ -49,8 +52,23 @@ public static class Workshop
                 using var p = Process.Start(psi);
                 if (p == null) { log.AppendLine(id + ": no se pudo iniciar steamcmd"); continue; }
 
-                var salida = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-                p.WaitForExit(600_000);
+                // Leer stdout y stderr a la vez. Leerlos en secuencia puede bloquearse
+                // cuando uno llena su bufer mientras el otro se lee.
+                var sb = new StringBuilder();
+                p.OutputDataReceived += (_, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
+                p.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
+                p.BeginOutputReadLine();
+                p.BeginErrorReadLine();
+
+                if (!p.WaitForExit(600_000))
+                {
+                    try { p.Kill(true); } catch { }
+                    log.AppendLine($"{id}: tiempo agotado, se canceló");
+                    continue;
+                }
+
+                string salida;
+                lock (sb) salida = sb.ToString();
 
                 if (salida.Contains($"Success. Downloaded item {id}"))
                 {
@@ -70,7 +88,31 @@ public static class Workshop
         return (ok, log.ToString());
     }
 
-    public static string ContentDir => Path.Combine(Path.GetDirectoryName(Rim.Cfg.SteamCmd) ?? "", "steamapps", "workshop", "content", "294100");
+    /// <summary>
+    /// Carpeta de trabajo de SteamCMD. Se deduce del ejecutable, pero si el archivo
+    /// configurado no existe se prueba la ubicacion habitual.
+    /// </summary>
+    public static string DirectorioTrabajo
+    {
+        get
+        {
+            if (File.Exists(Rim.Cfg.SteamCmd))
+                return Path.GetDirectoryName(Rim.Cfg.SteamCmd) ?? Rim.Cfg.SteamCmd;
+
+            foreach (var c in new[]
+            {
+                @"C:\WorkshopDL\steamcmd",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "steamcmd"),
+            })
+                if (Directory.Exists(c)) return c;
+
+            return Path.GetDirectoryName(Rim.Cfg.SteamCmd) ?? ".";
+        }
+    }
+
+    /// <summary>Carpeta donde SteamCMD deja los items del Workshop de RimWorld.</summary>
+    public static string ContentDir =>
+        Path.Combine(DirectorioTrabajo, "steamapps", "workshop", "content", "294100");
 
     /// <summary>
     /// Copia un item descargado a la carpeta Mods. Si ya existe un mod con el mismo

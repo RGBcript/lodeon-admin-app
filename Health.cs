@@ -65,7 +65,11 @@ public static class Health
         var dir = Rim.ModsDir;
         if (!Directory.Exists(dir)) return m;
 
-        foreach (var d in Directory.GetDirectories(dir))
+        string[] carpetas;
+        try { carpetas = Directory.GetDirectories(dir); }
+        catch { return m; }   // carpeta ilegible: mejor un mapa vacio que una excepcion
+
+        foreach (var d in carpetas)
         {
             var carpeta = Path.GetFileName(d);
             if (carpeta.StartsWith("_")) continue;
@@ -238,7 +242,11 @@ public static class Health
         if (!Directory.Exists(dir)) return res;
         var activos = new HashSet<string>(Rim.ActiveMods(), StringComparer.OrdinalIgnoreCase);
 
-        foreach (var d in Directory.GetDirectories(dir))
+        string[] carpetas;
+        try { carpetas = Directory.GetDirectories(dir); }
+        catch { return res; }
+
+        foreach (var d in carpetas)
         {
             if (Path.GetFileName(d).StartsWith("_")) continue;
             var about = Path.Combine(d, "About", "About.xml");
