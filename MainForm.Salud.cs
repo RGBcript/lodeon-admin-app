@@ -140,7 +140,7 @@ public partial class MainForm
             Theme.Text1(g,
                 $"Registro: {inf.AvisosLog} aviso(s) · mods mencionados: {inf.Culpables.Count} · " +
                 $"dependencias: {inf.DepsRotas.Count} · incompatibles: {inf.Incompatibles.Count} · " +
-                $"orden: {inf.OrdenRoto.Count}  ·  {inf.SinSoporte17.Count} mods declaran solo hasta 1.6 (no es un problema)",
+                $"orden: {inf.OrdenRoto.Count}",
                 Theme.Caption(), new Rectangle(0, 22, _veredicto.Width, 16), Theme.Text3);
         };
     }

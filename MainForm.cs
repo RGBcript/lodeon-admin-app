@@ -229,6 +229,18 @@ public partial class MainForm : Form
 
                     case "lvMods":
                         c.SetBounds(28, 148, inner, Math.Max(140, h - 148 - 62)); break;
+                    case "filtro":
+                        c.SetBounds(28, 82, Math.Max(180, Math.Min(320, inner / 3)), 26); break;
+                    case "lblLista":
+                    {
+                        // el contador va a la derecha; se calcula para que no se salga
+                        // de la ventana al estrecharla
+                        int anchoFiltro = Math.Max(180, Math.Min(320, inner / 3));
+                        int x = 28 + anchoFiltro + 16;
+                        int ancho = Math.Max(160, inner - anchoFiltro - 16);
+                        c.SetBounds(x, 86, ancho, 18);
+                        break;
+                    }
                     case "barraLista":
                         c.SetBounds(28, Math.Max(220, h - 48), inner, 32); break;
 
@@ -529,6 +541,8 @@ public partial class MainForm : Form
         _lblLista.ForeColor = Theme.Text3;
         _lblLista.BackColor = Theme.Bg;
         _lblLista.TextAlign = ContentAlignment.MiddleRight;
+        // sin AutoEllipsis el texto se recorta en silencio al estrechar la ventana
+        _lblLista.AutoEllipsis = true;
         p.Controls.Add(_lblLista);
 
         _lvMods.Name = "lvMods";
