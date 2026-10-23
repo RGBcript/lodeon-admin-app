@@ -3,8 +3,15 @@ bin/
 obj/
 publish/
 publish-full/
+dist-ligera/
+dist-portable/
 *.user
 *.suo
+
+# Paquetes de release: se suben como adjuntos del release, no al repo
+release/
+*.zip
+detect.txt
 
 # Configuracion personal: NUNCA se sube (contiene la clave de Steam)
 config.json
