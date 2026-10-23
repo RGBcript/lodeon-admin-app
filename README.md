@@ -11,6 +11,21 @@ nombre esperado.
 
 ---
 
+## Descargar
+
+No hace falta compilar. En [Releases](../../releases) hay dos paquetes:
+
+| Archivo | Requisitos | Tamaño |
+|---|---|---|
+| `lodeon-admin-v1.6-portable.zip` | **Ninguno** (incluye el runtime) | ~63 MB |
+| `lodeon-admin-v1.6.zip` | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | ~0.3 MB |
+
+Descomprime el contenido dentro de la carpeta de RimWorld, junto a `RimWorld.exe`,
+`Mods` y `Data`. Ejecuta `LodeonAdmin.exe`.
+
+La primera vez detecta el juego solo y crea `config.json`. Si no lo encuentra, la
+página **Ajustes** permite indicar la ruta a mano.
+
 ## Qué hace
 
 ### Estado
@@ -78,8 +93,9 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 
 El paquete resultante necesita **.NET 8 Desktop Runtime** instalado.
 
-> No uses `PublishSingleFile=true`: en este proyecto genera un ejecutable que arranca
-> sin interfaz y descarta los argumentos de consola.
+> No uses `PublishSingleFile=true`: genera un ejecutable que arranca sin interfaz y
+> descarta los argumentos de consola. La version **autocontenida sin single-file** si
+> funciona: se probo con los seis comandos y la interfaz.
 
 ---
 
