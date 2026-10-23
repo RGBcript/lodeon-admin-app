@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace LodeonAdmin;
@@ -13,76 +14,104 @@ public static class Workshop
 {
     // ------------------------------------------------------------------ SteamCMD
 
-    /// <summary>Descarga uno o varios items. Devuelve los ids que se bajaron bien.</summary>
-    public static (List<string> ok, string log) Descargar(IEnumerable<string> ids)
+    /// <summary>
+    /// Descarga uno o varios items en Una sola invocacion de SteamCMD.
+    ///
+    /// SteamCMD acepta varios "+workshop_download_item" antes de "+quit" y reutiliza
+    /// la sesion de login. Lanzar un proceso por mod arranca y para SteamCMD entero
+    /// cada vez, que es lo que hacia la descarga lenta.
+    ///
+    /// <paramref name="avance"/> recibe el progreso por linea para poder mostrarlo.
+    /// </summary>
+    public static (List<string> ok, string log) Descargar(
+        IEnumerable<string> ids, Action<string>? avance = null)
     {
         var lista = ids.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToList();
         var ok = new List<string>();
         var log = new StringBuilder();
 
+        if (lista.Count == 0) return (ok, "");
         if (!File.Exists(Rim.Cfg.SteamCmd))
         {
-            log.AppendLine("No se encuentra steamcmd en: " + Rim.Cfg.SteamCmd);
+            log.AppendLine("No se encuentra SteamCMD en: " + Rim.Cfg.SteamCmd);
+            log.AppendLine("Puedes indicar otra ruta en el apartado de configuración.");
             return (ok, log.ToString());
         }
 
+        var psi = new ProcessStartInfo(Rim.Cfg.SteamCmd)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add("+force_install_dir");
+        psi.ArgumentList.Add(DirectorioTrabajo);
+        psi.ArgumentList.Add("+login");
+        psi.ArgumentList.Add("anonymous");
         foreach (var id in lista)
         {
-            try
+            psi.ArgumentList.Add("+workshop_download_item");
+            psi.ArgumentList.Add("294100");
+            psi.ArgumentList.Add(id);
+        }
+        psi.ArgumentList.Add("+quit");
+
+        try
+        {
+            using var p = Process.Start(psi);
+            if (p == null)
             {
-                var psi = new ProcessStartInfo(File.Exists(Rim.Cfg.SteamCmd) ? Rim.Cfg.SteamCmd : "steamcmd.exe")
-                {
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                // La descarga va a la carpeta de trabajo de SteamCMD, que es el sitio
-                // donde despues la busca ContentDir. No se usa la carpeta del exe:
-                // SteamCMD instala en "<carpeta de steamcmd>/steamapps/...".
-                psi.ArgumentList.Add("+force_install_dir");
-                psi.ArgumentList.Add(DirectorioTrabajo);
-                psi.ArgumentList.Add("+login");
-                psi.ArgumentList.Add("anonymous");
-                psi.ArgumentList.Add("+workshop_download_item");
-                psi.ArgumentList.Add("294100");
-                psi.ArgumentList.Add(id);
-                psi.ArgumentList.Add("+quit");
-
-                using var p = Process.Start(psi);
-                if (p == null) { log.AppendLine(id + ": no se pudo iniciar steamcmd"); continue; }
-
-                // Leer stdout y stderr a la vez. Leerlos en secuencia puede bloquearse
-                // cuando uno llena su bufer mientras el otro se lee.
-                var sb = new StringBuilder();
-                p.OutputDataReceived += (_, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
-                p.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-
-                if (!p.WaitForExit(600_000))
-                {
-                    try { p.Kill(true); } catch { }
-                    log.AppendLine($"{id}: tiempo agotado, se canceló");
-                    continue;
-                }
-
-                string salida;
-                lock (sb) salida = sb.ToString();
-
-                if (salida.Contains($"Success. Downloaded item {id}"))
-                {
-                    ok.Add(id);
-                    log.AppendLine($"{id}: descargado");
-                }
-                else
-                {
-                    var linea = salida.Split('\n').FirstOrDefault(l => l.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
-                                       ?.Trim();
-                    log.AppendLine($"{id}: fallo" + (linea != null ? " — " + linea : ""));
-                }
+                log.AppendLine("No se pudo iniciar SteamCMD.");
+                return (ok, log.ToString());
             }
-            catch (Exception ex) { log.AppendLine($"{id}: {ex.Message}"); }
+
+            // stdout y stderr a la vez: leerlos en secuencia se bloquea cuando el
+            // que no se lee llena su bufer.
+            var sb = new StringBuilder();
+            p.OutputDataReceived += (_, e) =>
+            {
+                if (e.Data == null) return;
+                lock (sb) sb.AppendLine(e.Data);
+                var t = e.Data.Trim();
+                if (t.Length > 0 && (t.Contains("Downloading") || t.Contains("Success") ||
+                                     t.Contains("ERROR") || t.Contains("Validating")))
+                    avance?.Invoke(t);
+            };
+            p.ErrorDataReceived += (_, e) =>
+            {
+                if (e.Data != null) { lock (sb) sb.AppendLine(e.Data); }
+            };
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+
+            if (!p.WaitForExit(900_000))
+            {
+                try { p.Kill(true); } catch { }
+                log.AppendLine("SteamCMD tardó demasiado y se canceló.");
+            }
+
+            string salida;
+            lock (sb) salida = sb.ToString();
+
+            // Un item puede venir ya descargado ("Validating") o bajarse ahora
+            // ("Downloading"/"Success"): los dos casos cuentan como disponibles.
+            foreach (var id in lista)
+            {
+                bool bien = salida.Contains($"Success. Downloaded item {id}", StringComparison.Ordinal)
+                         || Regex.IsMatch(salida, $@"Validating active workshop item {id}\b");
+                if (bien) { ok.Add(id); log.AppendLine($"{id}: listo"); }
+                else log.AppendLine($"{id}: no se pudo descargar");
+            }
+
+            var errores = salida.Split('\n')
+                                .Where(l => l.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
+                                .Select(l => l.Trim()).Distinct().Take(5);
+            foreach (var e2 in errores) log.AppendLine("  " + e2);
+        }
+        catch (Exception ex)
+        {
+            log.AppendLine("Error al ejecutar SteamCMD: " + ex.Message);
         }
 
         return (ok, log.ToString());
