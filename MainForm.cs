@@ -11,7 +11,7 @@ public partial class MainForm : Form
     private readonly Panel _side = new();
     private readonly Panel _pages = new();
     private readonly List<NavBtn> _navs = new();
-    private readonly List<string> _keys = new() { "inicio", "salud", "workshop", "mods", "lista", "idioma" };
+    private readonly List<string> _keys = new() { "inicio", "salud", "workshop", "mods", "lista", "idioma", "ajustes" };
 
     // inicio
     private readonly StatCard _cVersion = new();
@@ -43,7 +43,7 @@ public partial class MainForm : Form
 
     private bool _busy;
     public string? StartPage { get; set; }
-    public static string Ver => "1.5";
+    public static string Ver => "1.6";
 
     public MainForm()
     {
@@ -66,6 +66,7 @@ public partial class MainForm : Form
             LayoutPages();
             RefreshAll();
             Select(StartPage ?? "inicio");
+            AvisarRutasSiFaltaJuego();
             ComprobarModsConfig();
             DetectarIdiomaAlArrancar();
             AvisarActualizacionesAlArrancar();
@@ -114,10 +115,10 @@ public partial class MainForm : Form
             BackColor = Theme.Side,
         });
 
-        var host = new Panel { Dock = DockStyle.Top, Height = 84 + 36 * 6, BackColor = Theme.Side };
+        var host = new Panel { Dock = DockStyle.Top, Height = 84 + 36 * 7, BackColor = Theme.Side };
         _side.Controls.Add(host);
 
-        string[] textos = { "Inicio", "Salud", "Workshop", "Mods", "Lista", "Idioma" };
+        string[] textos = { "Inicio", "Salud", "Workshop", "Mods", "Lista", "Idioma", "Ajustes" };
         for (int i = 0; i < textos.Length; i++)
         {
             var nb = new NavBtn(textos[i], 0, 84 + i * 36, 178, 36);
@@ -161,6 +162,7 @@ public partial class MainForm : Form
         BuildMods();
         BuildLista();
         BuildIdioma();
+        BuildAjustes();
 
         Select("inicio");
     }
@@ -180,6 +182,7 @@ public partial class MainForm : Form
         }
 
         if (key == "salud") CargarSalud();
+        if (key == "ajustes") CargarAjustes();
         if (key == "lista") CargarLista();
         if (key == "idioma") RefrescarIdioma();
         if (key == "workshop") { ActualizarEstadoClave(); ActualizarBotonAviso(); }
@@ -299,6 +302,31 @@ public partial class MainForm : Form
                         c.SetBounds(28, 132, inner, Math.Max(120, h - 132 - 62)); break;
                     case "barraSalud":
                         c.SetBounds(28, Math.Max(200, h - 48), inner, 32); break;
+                    case string s when s.StartsWith("lbl_"):
+                    {
+                        if (c.Tag is int y) c.SetBounds(28, y, Math.Max(200, inner), 16);
+                        break;
+                    }
+                    case "txtGamePath":
+                        c.SetBounds(28, 104, Math.Max(300, inner - 130), 26); break;
+                    case "btnExamJuego":
+                        c.SetBounds(inner - 92, 102, 92, 28); break;
+                    case "txtSteamCmd":
+                        c.SetBounds(28, 188, Math.Max(300, inner - 130), 26); break;
+                    case "btnExamCmd":
+                        c.SetBounds(inner - 92, 186, 92, 28); break;
+                    case "txtVersiones":
+                        c.SetBounds(28, 272, Math.Max(300, inner - 130), 26); break;
+                    case "btnExamVer":
+                        c.SetBounds(inner - 92, 270, 92, 28); break;
+                    case "lblEstadoRutas":
+                        c.SetBounds(28, 310, inner, 40); break;
+                    case "btnDetectar":
+                        c.SetBounds(28, 358, 220, 32); break;
+                    case "btnGuardarRutas":
+                        c.SetBounds(258, 358, 130, 32); break;
+                    case "btnAbrirCfg":
+                        c.SetBounds(398, 358, 140, 32); break;
                     case "rowsMods":
                         c.SetBounds(28, 82, inner, Math.Max(140, h - 110)); break;
                 }

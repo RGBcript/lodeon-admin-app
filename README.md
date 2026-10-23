@@ -93,6 +93,7 @@ Sirven para diagnosticar sin abrir la ventana:
 | `-health` | Informe de salud completo; escribe `health.txt` |
 | `-sortreport` | Ordena la lista y verifica que se respeten todas las reglas |
 | `-configcheck` | Estado de `ModsConfig.xml` y de sus copias |
+| `-detect` | Qué juego y qué SteamCMD encuentra la detección automática |
 | `-langreport` | Inventario de idiomas por mod |
 | `-page <nombre>` | Abre la interfaz en una página concreta |
 
@@ -100,9 +101,31 @@ Todos devuelven código de salida distinto de cero si encuentran un problema.
 
 ---
 
+### Ajustes
+Página para indicar dónde está el juego si la detección falla:
+
+- **Carpeta del juego** — valida que contenga `RimWorld.exe`.
+- **SteamCMD** — solo necesario para descargar del Workshop.
+- **Carpeta de copias** — dónde guardar las versiones anteriores.
+- Botón **Detectar automáticamente** y **Examinar** para elegir a mano.
+
+## Detección automática
+
+La app no da por hecho que el juego esté en un sitio concreto. Busca, en orden:
+
+1. Una instalación portable dentro de su propia carpeta.
+2. El registro de Steam (`HKCU\Software\Valve\Steam`, `SteamPath`).
+3. `steamapps\libraryfolders.vdf`, que declara las bibliotecas adicionales:
+   mucha gente tiene el juego en otra unidad.
+4. Ubicaciones habituales, como último recurso.
+
+Si la ruta guardada deja de existir, **se vuelve a detectar y avisa** en vez de
+mostrar datos vacíos. Con `-detect` puedes ver qué encuentra sin abrir la ventana.
+
 ## Configuración
 
-Se lee de `config.json`, junto al ejecutable. Se crea vacío la primera vez.
+Se lee de `config.json`, junto al ejecutable. Se crea con lo detectado la primera
+vez, así que un usuario nuevo no tiene que editar nada a mano.
 
 ```json
 {
@@ -134,6 +157,7 @@ La clave se obtiene gratis en <https://steamcommunity.com/dev/apikey>.
 | `Workshop.cs` | SteamCMD, actualizaciones, perfiles |
 | `LanguageSystem.cs` | Enlaces de traducción |
 | `AppConfig.cs` | Configuración |
+| `GameFinder.cs` | Detección del juego y de SteamCMD |
 
 ---
 

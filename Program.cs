@@ -23,6 +23,7 @@ static class Program
                     case "sortreport": code = SortReport.Run(); break;
                     case "configcheck": code = ConfigCheck.Run(); break;
                     case "health": code = HealthReport.Run(); break;
+                    case "detect": code = DetectReport.Run(); break;
                 }
             }
             catch (Exception ex)
