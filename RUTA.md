@@ -362,3 +362,61 @@ y se descargan uno a uno.
 Un argumento de consola desconocido abria la ventana y colgaba el script. Ahora
 avisa y lista los comandos validos. `-page` se exceptua porque abre la interfaz
 a proposito.
+---
+
+## v1.8 — buscar en el taller sin clave de API
+
+Sospechaba que la clave de Steam no era necesaria para todo, y era cierto: la
+pagina publica del taller devuelve HTML con los resultados y sus titulos.
+
+```
+https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=...&browsesort=textsearch
+```
+
+Devuelve 30 resultados por pagina con `id` y `titulo` en el `alt` de la miniatura.
+Comprobado con varias busquedas; los ids coinciden con los de la API oficial.
+
+### Que deja de necesitar la clave
+
+| Funcion | Antes | Ahora |
+|---|---|---|
+| Buscar por nombre | exigia clave | funciona sin clave |
+| Vincular mods al taller | exigia clave | funciona sin clave |
+| Descargar e instalar | ya no la usaba | igual |
+| Filtrar por etiqueta 1.7 | exigia clave | sigue exigiendo clave |
+
+### Vincular instalados
+
+`BuscarVinculos` recorre los mods sin `About\PublishedFileId.txt` (en este equipo
+son 61) y busca cada uno por su titulo. Si encuentra coincidencia exacta escribe
+el id, y entonces ya se le pueden comprobar actualizaciones.
+
+**El peligro que se encontro.** La primera version casaba por titulo normalizado y
+daba por buena esta coincidencia:
+
+```
+[RJW] Insects  (Ed86, packageId Ed86.rjwinsects)
+   -> id 847342844 = "Insects!" de 2017, otro mod completamente distinto
+```
+
+Un id equivocado haria que una actualizacion futura sustituyera el mod por otro.
+Ahora se exige ademas:
+
+- nombre de al menos 12 letras y dos palabras (los genericos como "Genes" no valen)
+- coincidencia exacta de la clave normalizada
+- si hay varios candidatos, desempate por titulo literal y luego por suscriptores
+  reales; si sigue habiendo empate, no se vincula
+
+Probado con mods que si estan en Steam copiados a mano:
+
+```
+Dubs Bad Hygiene            -> 836308268   correcto
+Vanilla Expanded Framework  -> 2023507013  correcto
+[RJW] Animal Graphics Addon -> sin vinculo (no esta en Steam)
+```
+
+### De paso
+
+- El aviso decia "Workshop desactivado" sin clave, y era falso: ya solo falta el
+  filtro por etiqueta.
+- El boton "Descargar e instalar" se salia por la derecha de la ventana.

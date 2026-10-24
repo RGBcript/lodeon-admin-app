@@ -237,6 +237,282 @@ public static class Workshop
         return null;
     }
 
+    // ------------------------------------------------------------------ busqueda web
+
+    /// <summary>
+    /// Busca en el Workshop leyendo la pagina publica del taller, SIN clave de API.
+    ///
+    /// La API oficial (IPublishedFileService/QueryFiles) exige clave, pero la pagina
+    /// de busqueda del taller es HTML normal y no pide nada. Devuelve id y titulo.
+    /// </summary>
+    public static List<(string Id, string Titulo)> BuscarWeb(string texto, int pagina = 1)
+    {
+        var res = new List<(string, string)>();
+        if (string.IsNullOrWhiteSpace(texto)) return res;
+
+        var url = "https://steamcommunity.com/workshop/browse/?appid=294100"
+                + "&searchtext=" + Uri.EscapeDataString(texto)
+                + "&browsesort=textsearch&section=readytouseitems&p=" + pagina;
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+            http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/120.0 Safari/537.36");
+
+            var html = http.GetStringAsync(url).GetAwaiter().GetResult();
+
+            // cada resultado es un <a href="...filedetails/?id=N"> y dentro va la
+            // miniatura, cuyo alt es el titulo del item
+            foreach (Match m in Regex.Matches(html,
+                @"filedetails/\?id=(\d{6,})""[^>]*>(.{0,600}?)</a>",
+                RegexOptions.Singleline))
+            {
+                var id = m.Groups[1].Value;
+                var titulo = "";
+                var alt = Regex.Match(m.Groups[2].Value, @"alt=""([^""]*)""");
+                if (alt.Success) titulo = System.Net.WebUtility.HtmlDecode(alt.Groups[1].Value);
+
+                if (!res.Any(x => x.Item1 == id)) res.Add((id, titulo.Trim()));
+            }
+        }
+        catch { }
+        return res;
+    }
+
+    /// <summary>
+    /// Normaliza un titulo para comparar: minusculas, sin prefijos [XYZ], sin
+    /// (Continued), sin [1.6], sin simbolos.
+    ///
+    /// Los prefijos tipo "[RJW] " estropean la busqueda: Steam no los usa en el
+    /// titulo del item, asi que buscarlos literalmente no encuentra nada.
+    /// </summary>
+    public static string ClaveTitulo(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return "";
+        var x = texto.ToLowerInvariant();
+        x = Regex.Replace(x, @"^(\[[^\]]+\]\s*)+", "");
+        x = x.Replace("(continued)", "").Replace("[continued]", "");
+        x = Regex.Replace(x, @"\[[0-9\.]+\]", "");
+        x = Regex.Replace(x, @"\([0-9\.]+\)", "");
+        x = Regex.Replace(x, @"[^a-z0-9]", "");
+        return x;
+    }
+
+    /// <summary>Texto de busqueda limpio: sin prefijos ni (Continued), con espacios.</summary>
+    public static string LimpiarParaBuscar(string nombre)
+    {
+        var x = Regex.Replace(nombre, @"^(\[[^\]]+\]\s*)+", "");
+        x = Regex.Replace(x, @"\(continued\)", "", RegexOptions.IgnoreCase);
+        x = Regex.Replace(x, @"\[continued\]", "", RegexOptions.IgnoreCase);
+        x = x.Trim();
+        return string.IsNullOrWhiteSpace(x) ? nombre : x;
+    }
+
+    public record Vinculo(string Carpeta, string NombreMod, string Id, string TituloWeb, int Puntaje);
+
+    /// <summary>Motivo por el que un mod no se vincula, para poder explicarlo.</summary>
+    public record Rechazo(string Carpeta, string NombreMod, string Motivo);
+
+    /// <summary>
+    /// Un nombre demasiado corto o de una sola palabra no basta para identificar un
+    /// mod: "[RJW] Insects" dio como "coincidencia exacta" el mod "Insects!" de 2017,
+    /// que es otro completamente distinto. Vincular mal es peor que no vincular:
+    /// una actualizacion futura sustituiria el mod por otro.
+    ///
+    /// Se mira el nombre YA LIMPIO pero CON espacios: contar palabras sobre la clave
+    /// sin espacios daba una sola "palabra" siempre y rechazaba todo.
+    /// </summary>
+    public static bool NombreIdentificable(string nombreLimpio)
+    {
+        var letras = Regex.Matches(nombreLimpio.ToLowerInvariant(), @"[a-z0-9]").Count;
+        if (letras < 12) return false;
+
+        var palabras = Regex.Matches(nombreLimpio.ToLowerInvariant(), @"[a-z0-9]{3,}");
+        return palabras.Count >= 2;
+    }
+
+    /// <summary>
+    /// Datos basicos de varios items de una vez. No necesita clave: usa
+    /// ISteamRemoteStorage/GetPublishedFileDetails, que es publico.
+    /// </summary>
+    public static Dictionary<string, (string Titulo, int Suscriptores)> Detalles(IEnumerable<string> ids)
+    {
+        var res = new Dictionary<string, (string, int)>(StringComparer.OrdinalIgnoreCase);
+        var lista = ids.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Take(50).ToList();
+        if (lista.Count == 0) return res;
+
+        try
+        {
+            var form = new Dictionary<string, string> { { "itemcount", lista.Count.ToString() } };
+            for (int i = 0; i < lista.Count; i++) form[$"publishedfileids[{i}]"] = lista[i];
+
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(40) };
+            var resp = http.PostAsync(
+                "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/",
+                new FormUrlEncodedContent(form)).GetAwaiter().GetResult();
+            if (!resp.IsSuccessStatusCode) return res;
+
+            var txt = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            using var doc = JsonDocument.Parse(txt);
+            if (!doc.RootElement.TryGetProperty("response", out var r)) return res;
+            if (!r.TryGetProperty("publishedfiledetails", out var arr)) return res;
+
+            foreach (var f in arr.EnumerateArray())
+            {
+                if (f.TryGetProperty("result", out var rv) && rv.TryGetInt32(out var rc) && rc != 1) continue;
+                var id = f.TryGetProperty("publishedfileid", out var p) ? (p.GetString() ?? "") : "";
+                if (id.Length == 0) continue;
+                var titulo = f.TryGetProperty("title", out var t) ? (t.GetString() ?? "") : "";
+                var subs = f.TryGetProperty("subscriptions", out var s) && s.TryGetInt32(out var si) ? si : 0;
+                res[id] = (titulo, subs);
+            }
+        }
+        catch { }
+        return res;
+    }
+
+    public static Vinculo? ProponerVinculo(string carpeta, string nombreMod)
+        => AnalizarVinculo(carpeta, nombreMod, out _);
+
+    /// <summary>
+    /// Propone un id del Workshop comparando titulos, explicando el motivo si no vale.
+    ///
+    /// Solo acepta coincidencia EXACTA de la clave normalizada, y solo si el nombre
+    /// es lo bastante especifico. Si varios items comparten titulo se desempata con
+    /// los suscriptores reales; si sigue habiendo empate, no se vincula.
+    /// </summary>
+    public static Vinculo? AnalizarVinculo(string carpeta, string nombreMod, out Rechazo? rechazo)
+    {
+        rechazo = null;
+        var clave = ClaveTitulo(nombreMod);
+        if (clave.Length < 4)
+        {
+            rechazo = new Rechazo(carpeta, nombreMod, "nombre demasiado corto para buscar");
+            return null;
+        }
+
+        var limpio = LimpiarParaBuscar(nombreMod);
+        if (!NombreIdentificable(limpio))
+        {
+            rechazo = new Rechazo(carpeta, nombreMod,
+                $"«{limpio}» es demasiado genérico (una palabra o muy corto)");
+            return null;
+        }
+
+        var resultados = BuscarWeb(limpio);
+        if (resultados.Count == 0)
+        {
+            rechazo = new Rechazo(carpeta, nombreMod, "sin resultados en el taller");
+            return null;
+        }
+
+        var exactos = resultados.Where(x => ClaveTitulo(x.Titulo) == clave).ToList();
+        if (exactos.Count == 0)
+        {
+            rechazo = new Rechazo(carpeta, nombreMod, "ningún título del taller coincide exactamente");
+            return null;
+        }
+
+        if (exactos.Count == 1)
+            return new Vinculo(carpeta, nombreMod, exactos[0].Id, exactos[0].Titulo, 100);
+
+        // varios con el mismo titulo normalizado: desempatar con datos reales.
+        // El titulo del taller suele traer sufijos ("(1.6)", "zh-pack"), asi que se
+        // prefiere el que coincida letra a letra y, si no, el mas suscrito.
+        var detalles = Detalles(exactos.Select(x => x.Id));
+        var candidatos = exactos
+            .Select(x => new
+            {
+                x.Id,
+                x.Titulo,
+                Bruto = detalles.TryGetValue(x.Id, out var d) ? d.Titulo : x.Titulo,
+                Subs = detalles.TryGetValue(x.Id, out var d2) ? d2.Suscriptores : 0,
+            })
+            .ToList();
+
+        // 1) coincidencia literal del titulo con el nombre del mod
+        var literal = candidatos
+            .Where(c => string.Equals(c.Bruto.Trim(), nombreMod.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (literal.Count == 1)
+            return new Vinculo(carpeta, nombreMod, literal[0].Id, literal[0].Bruto, 100);
+
+        // 2) el mas suscrito, si destaca sobre el segundo
+        var orden = candidatos.OrderByDescending(c => c.Subs).ToList();
+        if (orden.Count >= 2 && orden[0].Subs > 0 && orden[0].Subs >= orden[1].Subs * 2)
+            return new Vinculo(carpeta, nombreMod, orden[0].Id, orden[0].Bruto, 100);
+
+        var resumen = string.Join(", ", orden.Select(c => $"{c.Id}({c.Subs})"));
+        rechazo = new Rechazo(carpeta, nombreMod,
+            $"{exactos.Count} candidatos y ninguno destaca: {resumen}");
+        return null;
+    }
+
+    /// <summary>Escribe About\PublishedFileId.txt, igual que hace el juego al descargar.</summary>
+    public static bool EscribirPublishedFileId(string carpeta, string id, out string error)
+    {
+        error = "";
+        try
+        {
+            var dir = Path.Combine(Rim.ModsDir, carpeta, "About");
+            if (!Directory.Exists(dir)) { error = "no existe " + dir; return false; }
+            File.WriteAllText(Path.Combine(dir, "PublishedFileId.txt"), id);
+            return true;
+        }
+        catch (Exception ex) { error = ex.Message; return false; }
+    }
+
+    /// <summary>
+    /// Recorre los mods sin PublishedFileId.txt y propone vinculos.
+    /// <paramref name="avance"/> recibe una linea por mod para mostrar progreso.
+    /// </summary>
+    public static List<Vinculo> BuscarVinculos(Action<string>? avance = null,
+                                               List<Rechazo>? rechazos = null, int maximo = 80)
+    {
+        var res = new List<Vinculo>();
+        if (!Directory.Exists(Rim.ModsDir)) return res;
+
+        var pendientes = new List<(string carpeta, string nombre)>();
+        foreach (var d in Directory.GetDirectories(Rim.ModsDir))
+        {
+            var carpeta = Path.GetFileName(d);
+            if (carpeta.StartsWith("_")) continue;
+            if (File.Exists(Path.Combine(d, "About", "PublishedFileId.txt"))) continue;
+
+            var nombre = carpeta;
+            try
+            {
+                var about = Path.Combine(d, "About", "About.xml");
+                if (File.Exists(about))
+                {
+                    var doc = XDocument.Load(about);
+                    var n = doc.Root?.Element("name")?.Value?.Trim();
+                    if (!string.IsNullOrWhiteSpace(n)) nombre = n!;
+                }
+            }
+            catch { }
+            pendientes.Add((carpeta, nombre));
+        }
+
+        int hechos = 0;
+        foreach (var (carpeta, nombre) in pendientes)
+        {
+            if (hechos >= maximo) break;
+            hechos++;
+            avance?.Invoke($"({hechos}/{Math.Min(pendientes.Count, maximo)}) {nombre}");
+
+            var v = AnalizarVinculo(carpeta, nombre, out var rechazo);
+            if (v != null) res.Add(v);
+            else if (rechazo != null) rechazos?.Add(rechazo);
+
+            // sin pausa Steam empieza a devolver paginas vacias
+            Thread.Sleep(350);
+        }
+        return res;
+    }
+
     // ------------------------------------------------------------------ colecciones
 
     /// <summary>

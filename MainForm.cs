@@ -43,7 +43,7 @@ public partial class MainForm : Form
 
     private bool _busy;
     public string? StartPage { get; set; }
-    public static string Ver => "1.7";
+    public static string Ver => "1.8";
 
     public MainForm()
     {
@@ -298,17 +298,20 @@ public partial class MainForm : Form
                     case "lblKeyState":
                         c.SetBounds(28, 118, 480, 16); break;
                     case "txtKey":
-                        c.SetBounds(28, 138, 340, 24); break;
+                        c.SetBounds(28, 138, Math.Max(160, inner - 498), 24); break;
                     case "btnGuardarClave":
-                        c.SetBounds(376, 137, 128, 26); break;
+                        c.SetBounds(inner - 462, 137, 128, 26); break;
                     case "btnProbar":
-                        c.SetBounds(512, 137, 150, 26); break;
+                        c.SetBounds(inner - 326, 137, 132, 26); break;
                     case "btnDescargar":
-                        c.SetBounds(Math.Max(672, inner - 300), 137, 200, 26); break;
+                        // pegado al borde derecho: antes usaba un x fijo y se salia
+                        c.SetBounds(inner - 186, 137, 186, 26); break;
                     case "btnActualizaciones":
                         c.SetBounds(28, 180, 220, 26); break;
+                    case "btnVincular":
+                        c.SetBounds(Math.Max(256, inner - 200), 180, 200, 26); break;
                     case "btnAviso":
-                        c.SetBounds(256, 180, 260, 26); break;
+                        c.SetBounds(256, 180, Math.Max(120, inner - 470), 26); break;
                     case "lvRes":
                         c.SetBounds(28, 216, inner, 140); break;
                     case "txtOut":
@@ -419,6 +422,64 @@ public partial class MainForm : Form
         bar.Controls.Add(b3);
     }
 
+    /// <summary>
+    /// Busca en el taller el id de los mods copiados a mano y, si el usuario acepta,
+    /// escribe About\PublishedFileId.txt. Solo se aceptan coincidencias exactas.
+    /// </summary>
+    private async void VincularInstalados()
+    {
+        if (MessageBox.Show(this,
+            "Se buscará en el taller el id de los mods instalados que no lo tienen.\n\n" +
+            "Solo se vincula cuando el título coincide exactamente: escribir un id " +
+            "equivocado haría que una actualización futura sustituyera el mod por otro.\n\n" +
+            "Puede tardar un rato (una consulta por mod). ¿Continuar?",
+            "Vincular instalados", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
+
+        SetOut("Buscando ids de los mods sin vincular…\r\n\r\nNo cierres la ventana.");
+
+        try
+        {
+            var rechazos = new List<Workshop.Rechazo>();
+            var hallados = await Task.Run(() => Workshop.BuscarVinculos(
+                l => { if (!IsDisposed) BeginInvoke(new Action(() => { if (!IsDisposed) SetOut("Buscando…\r\n\r\n" + l); })); },
+                rechazos));
+
+            if (hallados.Count == 0)
+            {
+                SetOut("Ningún mod sin id coincide exactamente con un título del taller.\r\n\r\n" +
+                       $"Revisados {rechazos.Count}. Es normal en mods que no están en Steam " +
+                       "(los [ES], los de LoversLab y los parches propios).");
+                return;
+            }
+
+            var lista = string.Join("\r\n", hallados.Take(20)
+                .Select(v => $"  • {v.Carpeta}  →  {v.Id}"));
+            if (hallados.Count > 20) lista += $"\r\n  … y {hallados.Count - 20} más";
+
+            if (MessageBox.Show(this,
+                $"Se encontraron {hallados.Count} coincidencias exactas:\r\n\r\n{lista}\r\n\r\n" +
+                "¿Escribir los ids? Después podrás comprobar sus actualizaciones.",
+                "Vincular instalados", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            {
+                SetOut($"Propuesta descartada ({hallados.Count} sin escribir).");
+                return;
+            }
+
+            int ok = 0, fallos = 0;
+            foreach (var v in hallados)
+                if (Workshop.EscribirPublishedFileId(v.Carpeta, v.Id, out _)) ok++;
+                else fallos++;
+
+            SetOut($"Vinculados: {ok}" + (fallos > 0 ? $"   fallos: {fallos}" : "") +
+                   "\r\n\r\nPulsa «Buscar actualizaciones» para comprobarlos.");
+        }
+        catch (Exception ex)
+        {
+            SetOut("Error al vincular: " + ex.Message);
+        }
+    }
+
     /// <summary>Lista las instalaciones encontradas y abre la elegida.</summary>
     private void AbrirVersiones()
     {
@@ -511,6 +572,13 @@ public partial class MainForm : Form
         actualizar.Name = "btnActualizaciones";
         actualizar.Click += (_, _) => BuscarActualizaciones();
         p.Controls.Add(actualizar);
+
+        // Mods copiados a mano no traen PublishedFileId.txt: sin el id no se les
+        // pueden comprobar actualizaciones. Esto lo busca por titulo en el taller.
+        var vincular = new FlatBtn("Vincular instalados", 0, 0, 1, 1);
+        vincular.Name = "btnVincular";
+        vincular.Click += (_, _) => VincularInstalados();
+        p.Controls.Add(vincular);
 
         var aviso = new FlatBtn("", 0, 0, 1, 1);
         aviso.Name = "btnAviso";
@@ -845,6 +913,46 @@ public partial class MainForm : Form
         if (q.Length == 0) { SetOut("Escribe un nombre, un enlace o un ID para buscar."); return; }
 
         var key = Rim.Cfg.SteamApiKey?.Trim() ?? "";
+
+        // si es un enlace o ID, extraer el numero
+        var m = System.Text.RegularExpressions.Regex.Match(q, @"(\d{6,})");
+        var consulta = m.Success ? m.Groups[1].Value : q;
+
+        // Buscar por texto NO necesita clave: la pagina publica del taller permite
+        // lo mismo que la API. Solo se avisa de que faltan las etiquetas.
+        if (key.Length != 32 && !m.Success)
+        {
+            SetOut("Consultando el taller (sin clave de API)…");
+            try
+            {
+                var hallados = await Task.Run(() => Workshop.BuscarWeb(consulta));
+
+                _lvRes.BeginUpdate();
+                _lvRes.Items.Clear();
+                foreach (var (id, titulo) in hallados)
+                {
+                    var it = new ListViewItem(
+                        string.IsNullOrWhiteSpace(titulo) ? "(sin título)" : titulo) { Tag = id };
+                    it.SubItems.Add("");
+                    it.SubItems.Add(id);
+                    _lvRes.Items.Add(it);
+                }
+                _lvRes.EndUpdate();
+
+                SetOut(hallados.Count == 0
+                    ? $"Sin resultados para «{consulta}».\n\nPrueba otro término, o pega el enlace del mod."
+                    : $"{hallados.Count} resultado(s) para «{consulta}».\n\n" +
+                      "Búsqueda sin clave: funciona, pero la columna 1.7 necesita la clave de Steam.\n" +
+                      "Para descargar sí basta con seleccionar y pulsar Descargar.");
+                return;
+            }
+            catch (Exception ex)
+            {
+                SetOut("No se pudo consultar el taller: " + ex.Message);
+                return;
+            }
+        }
+
         if (key.Length != 32)
         {
             SetOut("No hay una clave de Steam válida guardada.\n\n" +
@@ -852,10 +960,6 @@ public partial class MainForm : Form
                    "Se obtiene gratis en steamcommunity.com/dev/apikey");
             return;
         }
-
-        // si es un enlace o ID, extraer el numero
-        var m = System.Text.RegularExpressions.Regex.Match(q, @"(\d{6,})");
-        var consulta = m.Success ? m.Groups[1].Value : q;
 
         SetOut("Consultando el Workshop…");
         try
@@ -1149,8 +1253,10 @@ public partial class MainForm : Form
         var k = Rim.Cfg.SteamApiKey?.Trim() ?? "";
         if (k.Length == 0)
         {
-            _lblKeyState.Text = "Sin clave configurada · Workshop desactivado";
-            _lblKeyState.ForeColor = Theme.Red;
+            // Sin clave el Workshop NO esta desactivado: buscar, descargar, instalar
+            // y vincular funcionan. Solo falta el filtro por etiqueta de version.
+            _lblKeyState.Text = "Sin clave · búsqueda y descarga funcionan; falta el filtro de versión";
+            _lblKeyState.ForeColor = Theme.Text3;
         }
         else
         {

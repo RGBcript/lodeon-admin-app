@@ -113,6 +113,7 @@ Sirven para diagnosticar sin abrir la ventana:
 | `-versiones` | Instalaciones de RimWorld encontradas en la carpeta de copias |
 | `-ordercheck` | Comprueba que reactivar un mod respeta su posición original |
 | `-coleccion <id>` | Dice si un id es un mod o una colección, y cuántos hijos tiene |
+| `-vincular` | Propone ids del taller para los mods instalados a mano (`-aplicar` los escribe) |
 | `-langreport` | Inventario de idiomas por mod |
 | `-page <nombre>` | Abre la interfaz en una página concreta |
 
@@ -167,6 +168,31 @@ C:\Games\Versiones\1.6\
 Para que una versión antigua no comparta partidas ni ajustes con la actual, la
 ventana trae marcado **Usar datos separados**, que arranca el juego con
 `-savedatafolder`.
+
+## Sin clave de Steam
+
+La clave de API **ya no hace falta** para lo esencial. La página del taller de Steam
+es HTML público, así que se puede buscar por nombre, listar resultados y descargar.
+
+| Función | ¿Necesita clave? |
+|---|---|
+| Buscar por nombre | No |
+| Descargar e instalar | No |
+| Buscar actualizaciones | No |
+| Vincular mods al taller | No |
+| Filtrar por etiqueta de versión (1.7) | Sí |
+
+## Vincular mods instalados
+
+Los mods descargados por Steam traen `About\PublishedFileId.txt`; los copiados a
+mano no, y sin ese archivo no se les pueden comprobar actualizaciones.
+
+El botón **Vincular instalados** busca cada uno por su título en el taller y
+escribe el id. Solo acepta coincidencia **exacta**, y rechaza nombres genéricos.
+
+Es deliberadamente conservador: escribir un id equivocado haría que una
+actualización futura sustituyera el mod por otro completamente distinto. Se
+prefiere no vincular antes que vincular mal.
 
 ## Colecciones del Workshop
 

@@ -9,8 +9,8 @@
     <AssemblyName>LodeonAdmin</AssemblyName>
     <RootNamespace>LodeonAdmin</RootNamespace>
     <ApplicationIcon>assets\lodeon-v4.ico</ApplicationIcon>
-    <Version>1.7.0</Version>
-    <FileVersion>1.7.0.0</FileVersion>
+    <Version>1.8.0</Version>
+    <FileVersion>1.8.0.0</FileVersion>
     <Product>Lodeon Admin</Product>
     <Company>Lodeon</Company>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

@@ -27,6 +27,7 @@ static class Program
                     case "ordercheck": code = OrderCheck.Run(); break;
                     case "versiones": code = VersionsReport.Run(); break;
                     case "coleccion": code = CollectionReport.Run(args); break;
+                    case "vincular": code = VincularReport.Run(args); break;
 
                     // -page <nombre> abre la ventana en una pagina concreta: no es un
                     // comando de consola, asi que se deja pasar a la interfaz.
