@@ -24,6 +24,38 @@ static class Program
                     case "configcheck": code = ConfigCheck.Run(); break;
                     case "health": code = HealthReport.Run(); break;
                     case "detect": code = DetectReport.Run(); break;
+                    case "ordercheck": code = OrderCheck.Run(); break;
+                    case "versiones": code = VersionsReport.Run(); break;
+                    case "coleccion": code = CollectionReport.Run(args); break;
+
+                    // -page <nombre> abre la ventana en una pagina concreta: no es un
+                    // comando de consola, asi que se deja pasar a la interfaz.
+                    case "page": break;
+
+                    // Un argumento desconocido NO debe abrir la ventana: en un script
+                    // eso cuelga la ejecucion sin decir nada. Se avisa y se listan los
+                    // comandos validos.
+                    default:
+                        // Console.OutputEncoding lanza si la salida esta redirigida:
+                        // sin try/catch el catch de abajo devolvia 2 en vez de 3.
+                        try { Console.OutputEncoding = Encoding.UTF8; } catch { }
+                        var err = Console.Error;
+                        err.WriteLine("Comando desconocido: " + args[0]);
+                        err.WriteLine();
+                        err.WriteLine("Comandos disponibles:");
+                        err.WriteLine("  -selftest      rutas, archivos y configuración");
+                        err.WriteLine("  -detect        qué juego y SteamCMD se detectan");
+                        err.WriteLine("  -versiones     instalaciones encontradas");
+                        err.WriteLine("  -health        informe del registro de errores");
+                        err.WriteLine("  -sortreport    comprobación del orden de mods");
+                        err.WriteLine("  -ordercheck    posiciones del orden de carga");
+                        err.WriteLine("  -configcheck   estado de ModsConfig.xml");
+                        err.WriteLine("  -langreport    idiomas detectados");
+                        err.WriteLine("  -bridge        herramientas de traducción");
+                        err.WriteLine();
+                        err.WriteLine("Sin argumentos se abre la ventana; -page <nombre> en una página concreta.");
+                        code = 3;
+                        break;
                 }
             }
             catch (Exception ex)

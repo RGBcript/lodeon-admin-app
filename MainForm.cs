@@ -43,7 +43,7 @@ public partial class MainForm : Form
 
     private bool _busy;
     public string? StartPage { get; set; }
-    public static string Ver => "1.6";
+    public static string Ver => "1.7";
 
     public MainForm()
     {
@@ -66,6 +66,7 @@ public partial class MainForm : Form
             LayoutPages();
             RefreshAll();
             Select(StartPage ?? "inicio");
+            SembrarOrdenSiFalta();
             AvisarRutasSiFaltaJuego();
             ComprobarModsConfig();
             DetectarIdiomaAlArrancar();
@@ -87,6 +88,23 @@ public partial class MainForm : Form
         }
         catch { }
         return null;
+    }
+
+    /// <summary>
+    /// La primera vez no hay indice de orden: se toma la lista actual como
+    /// referencia. Sin esto, el primer cambio de activacion no tendria posiciones
+    /// que respetar y todo se iria al final.
+    /// </summary>
+    private void SembrarOrdenSiFalta()
+    {
+        try
+        {
+            if (File.Exists(Order.FilePath)) return;
+            var act = Rim.ActiveMods();
+            if (act.Count == 0) return;
+            Order.Guardar(act);
+        }
+        catch { }
     }
 
     // ============================================================ estructura
@@ -394,6 +412,27 @@ public partial class MainForm : Form
         var b2 = new FlatBtn("Abrir registro", 128, 0, 138, 32);
         b2.Click += (_, _) => OpenPath(Rim.LogPath);
         bar.Controls.Add(b2);
+
+        // Abrir otra de las copias guardadas sin cambiar la configuracion.
+        var b3 = new FlatBtn("Versiones", 276, 0, 118, 32);
+        b3.Click += (_, _) => AbrirVersiones();
+        bar.Controls.Add(b3);
+    }
+
+    /// <summary>Lista las instalaciones encontradas y abre la elegida.</summary>
+    private void AbrirVersiones()
+    {
+        try
+        {
+            var lista = Versiones.Listar();
+            using var dlg = new VersionesForm(lista);
+            dlg.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Versiones",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
 
@@ -767,8 +806,10 @@ public partial class MainForm : Form
                 "Se guarda una copia de la configuración antes de escribir.\n\n¿Continuar?",
                 "Aplicar cambios", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
 
-            var nueva = act.Where(x => !quitar.Contains(x)).ToList();
-            nueva.AddRange(poner);
+            // Reinsertar en la posicion original, no al final: en RimWorld el orden
+            // de carga importa y mover un mod puede desactivar sus parches.
+            var nueva = Order.Reinsertar(
+                act.Where(x => !quitar.Contains(x)).ToList(), poner);
 
             if (!Rim.SetActiveMods(nueva, out _, out var err))
             {
@@ -776,6 +817,9 @@ public partial class MainForm : Form
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
+
+            // Guardar el indice para que el proximo cambio respete esta posicion.
+            Order.Mezclar(nueva);
 
             // El juego lee ModsConfig.xml al arrancar: si esta abierto, los cambios
             // no tienen efecto hasta reiniciarlo.
@@ -907,11 +951,21 @@ public partial class MainForm : Form
         }
         if (ids.Count == 0) { SetOut("Selecciona un mod de la lista o pega su ID."); return; }
 
+        // Si lo pegado es una coleccion, hay que expandirla: SteamCMD no descarga
+        // colecciones, solo mods sueltos.
+        SetOut("Comprobando si es una colección...");
+        var expandidos = Workshop.Expandir(ids, out var notaColeccion);
+        if (!string.IsNullOrWhiteSpace(notaColeccion))
+            SetOut(notaColeccion + "\r\n\r\nTotal a descargar: " + expandidos.Count);
+
         if (MessageBox.Show(this,
             $"Se descargará con SteamCMD y se instalará en la carpeta de mods.\n" +
             $"Si el mod ya existe, se guarda copia antes de sustituirlo.\n\n" +
-            $"Mods: {ids.Count}\n\n¿Continuar?",
+            (string.IsNullOrWhiteSpace(notaColeccion) ? "" : notaColeccion + "\n") +
+            $"Mods: {expandidos.Count}\n\n¿Continuar?",
             "Descargar", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+        ids = expandidos;
 
         SetOut($"Descargando {ids.Count} mod(s) con SteamCMD...\r\n\r\nNo cierres la ventana.");
 

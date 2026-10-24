@@ -237,7 +237,90 @@ public static class Workshop
         return null;
     }
 
-    // ------------------------------------------------------------------ actualizaciones
+    // ------------------------------------------------------------------ colecciones
+
+    /// <summary>
+    /// Resuelve una coleccion del Workshop en los ids que contiene.
+    ///
+    /// Una coleccion no es un mod: SteamCMD no la descarga. Hay que pedir sus hijos
+    /// a la API y descargar cada uno. Sin esto, pegar el enlace de una coleccion
+    /// fallaba con un error de SteamCMD que no explicaba nada.
+    ///
+    /// No necesita clave de API.
+    /// </summary>
+    public static (List<string> hijos, string error) HijosDeColeccion(string id)
+    {
+        var res = new List<string>();
+        if (string.IsNullOrWhiteSpace(id) || !Regex.IsMatch(id, @"^\d{6,}$"))
+            return (res, "el id no parece válido");
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+            var body = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string,string>("collectioncount", "1"),
+                new KeyValuePair<string,string>("publishedfileids[0]", id),
+            });
+
+            using var resp = http.PostAsync(
+                "https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v1/", body)
+                .GetAwaiter().GetResult();
+            if (!resp.IsSuccessStatusCode) return (res, "Steam respondió " + (int)resp.StatusCode);
+
+            var txt = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            using var doc = JsonDocument.Parse(txt);
+            if (!doc.RootElement.TryGetProperty("response", out var r)) return (res, "respuesta sin datos");
+            if (!r.TryGetProperty("collectiondetails", out var cd)) return (res, "no es una colección");
+            if (cd.GetArrayLength() == 0) return (res, "no es una colección");
+
+            var primera = cd[0];
+            // result: 1 = existe; 9 = no existe
+            if (primera.TryGetProperty("result", out var rv) && rv.TryGetInt32(out var rc) && rc != 1)
+                return (res, "la colección no existe o es privada");
+
+            if (!primera.TryGetProperty("children", out var hijos))
+                return (res, "la colección está vacía");
+
+            foreach (var h in hijos.EnumerateArray())
+                if (h.TryGetProperty("publishedfileid", out var pf))
+                {
+                    var s = pf.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) res.Add(s);
+                }
+
+            return (res, res.Count == 0 ? "la colección está vacía" : "");
+        }
+        catch (Exception ex) { return (res, ex.Message); }
+    }
+
+    /// <summary>
+    /// Si el id es una coleccion devuelve sus mods; si es un mod suelto, lo devuelve
+    /// tal cual. El texto de <paramref name="nota"/> explica cual de las dos cosas fue.
+    /// </summary>
+    public static List<string> Expandir(IEnumerable<string> ids, out string nota)
+    {
+        var res = new List<string>();
+        var notas = new List<string>();
+
+        foreach (var id in ids)
+        {
+            var (hijos, err) = HijosDeColeccion(id);
+            if (hijos.Count > 0)
+            {
+                notas.Add($"El id {id} es una colección: se añaden {hijos.Count} mods.");
+                foreach (var h in hijos) if (!res.Contains(h)) res.Add(h);
+            }
+            else
+            {
+                if (!res.Contains(id)) res.Add(id);
+            }
+        }
+
+        nota = string.Join("\r\n", notas);
+        return res;
+    }
+// ------------------------------------------------------------------ actualizaciones
 
     public class Desactualizado
     {
@@ -383,6 +466,9 @@ public static class Workshop
             if (lista.Count == 0) return (false, "el perfil está vacío");
 
             if (!Rim.SetActiveMods(lista, out var bak, out var err)) return (false, err);
+
+            // el perfil define el orden completo: pasa a ser la referencia
+            Order.Guardar(lista);
 
             return (true, $"{lista.Count} mods activados. Copia: {Path.GetFileName(bak)}");
         }

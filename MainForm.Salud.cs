@@ -187,6 +187,10 @@ public partial class MainForm
             return;
         }
 
+        // conservar el indice del mod desactivado para que al reactivarlo vuelva
+        // a su sitio
+        Order.Mezclar(activos);
+
         MessageBox.Show(this,
             $"«{mod.Name}» desactivado.\n\nCopia: {Path.GetFileName(bak)}\n\n" +
             (Rim.GameRunning() ? "Reinicia RimWorld para aplicarlo." : "Se aplicará al abrir el juego."),

@@ -110,6 +110,9 @@ Sirven para diagnosticar sin abrir la ventana:
 | `-sortreport` | Ordena la lista y verifica que se respeten todas las reglas |
 | `-configcheck` | Estado de `ModsConfig.xml` y de sus copias |
 | `-detect` | Qué juego y qué SteamCMD encuentra la detección automática |
+| `-versiones` | Instalaciones de RimWorld encontradas en la carpeta de copias |
+| `-ordercheck` | Comprueba que reactivar un mod respeta su posición original |
+| `-coleccion <id>` | Dice si un id es un mod o una colección, y cuántos hijos tiene |
 | `-langreport` | Inventario de idiomas por mod |
 | `-page <nombre>` | Abre la interfaz en una página concreta |
 
@@ -137,6 +140,41 @@ La app no da por hecho que el juego esté en un sitio concreto. Busca, en orden:
 
 Si la ruta guardada deja de existir, **se vuelve a detectar y avisa** en vez de
 mostrar datos vacíos. Con `-detect` puedes ver qué encuentra sin abrir la ventana.
+
+## Orden de carga
+
+Cada mod guarda su posición en `state/mod-order.json`. Al desactivar y volver a
+activar un mod, **vuelve a su sitio** en lugar de irse al final.
+
+Esto importa más de lo que parece: en RimWorld el orden decide si un parche se
+aplica. Sin índice, reactivar un mod lo movía al final y sus parches podían dejar
+de funcionar, con un fallo silencioso en la partida.
+
+El índice se crea solo la primera vez y se actualiza al ordenar por reglas o al
+cargar un perfil. `-ordercheck` lo verifica sin tocar nada.
+
+## Varias versiones del juego
+
+La página **Estado** tiene un botón **Versiones** que lista las copias guardadas
+en la carpeta configurada y permite abrir cualquiera.
+
+```
+C:\Games\Versiones\1.6\
+    RimWorld.exe  (o RimWorld\RimWorldWin64.exe)
+    Version.txt
+```
+
+Para que una versión antigua no comparta partidas ni ajustes con la actual, la
+ventana trae marcado **Usar datos separados**, que arranca el juego con
+`-savedatafolder`.
+
+## Colecciones del Workshop
+
+Si pegas el id de una **colección** en Workshop, Lodeon pide sus hijos a la API y
+descarga los mods uno a uno. SteamCMD no sabe descargar colecciones: sin esto,
+pegarlas daba un error que no explicaba nada.
+
+`-coleccion <id>` dice qué es un id sin abrir la ventana.
 
 ## Configuración
 

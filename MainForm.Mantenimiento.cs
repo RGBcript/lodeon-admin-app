@@ -102,6 +102,9 @@ public partial class MainForm
                 return;
             }
 
+            // el orden calculado pasa a ser la nueva referencia
+            Order.Guardar(r.Orden);
+
             MessageBox.Show(this,
                 $"Orden aplicado: {movidos} mods movidos.\n\nCopia de seguridad:\n{Path.GetFileName(bak)}\n\nReinicia el juego para cargar el nuevo orden.",
                 "Ordenar", MessageBoxButtons.OK, MessageBoxIcon.Information);
